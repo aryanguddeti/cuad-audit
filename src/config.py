@@ -4,14 +4,14 @@ Works unchanged on the Mac (PyCharm) and on Colab:
 - code location is found from this file's own position
 - large files go to Google Drive on Colab, to the project folder locally
 """
-import sys
 from pathlib import Path
 
 # src/config.py -> parents[1] is the repo root, wherever the repo was cloned
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
-# Colab imports google.colab at startup; the Mac never does
-IN_COLAB = "google.colab" in sys.modules
+# True when Google Drive is mounted at Colab's path: works in notebooks AND in
+# `!python -m ...` subprocesses (which never import google.colab)
+IN_COLAB = Path("/content/drive/MyDrive").exists()
 STORAGE_ROOT = Path("/content/drive/MyDrive/cuad-audit") if IN_COLAB else CODE_ROOT
 
 DATA_RAW       = STORAGE_ROOT / "data" / "raw"
