@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 import pandas as pd
+from src import config
 
 CATEGORY_RE = re.compile(r'related to "(.+?)"')
 
@@ -45,3 +46,7 @@ def load_squad(path: Path) -> tuple[pd.DataFrame, dict[str, str]]:
                     "is_impossible": qa.get("is_impossible", len(answers) == 0),
                 })
     return pd.DataFrame(rows), contexts
+
+def load_splits() -> dict[str, list[str]]:
+    """Return {'train': [...titles], 'val': [...], 'test': [...]} from the saved split file."""
+    return json.loads(config.SPLITS_FILE.read_text())

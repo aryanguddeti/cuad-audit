@@ -26,8 +26,20 @@ ALL_DIRS = [DATA_RAW, DATA_PROCESSED, CHECKPOINTS, PREDICTIONS, METRICS, FIGURES
 
 SEED = 42  # train/val split and audit sampling
 
-# Filled in during M1, after counting positive answers per category in the test split
-CATEGORIES: list[str] = []
+# Contract-level split: small file, tracked in git so Colab uses the identical split
+SPLITS_FILE = CODE_ROOT / "splits" / "cuad_splits.json"
+VAL_FRACTION = 0.10
+
+# Chosen in M1 (see results/metrics/category_counts.csv); exact CUAD spelling matters
+CLEAR_CATEGORIES = [
+    "Effective Date", "Agreement Date", "Governing Law",
+    "Expiration Date", "Anti-Assignment", "Insurance",
+]
+AMBIGUOUS_CATEGORIES = [
+    "License Grant", "Cap On Liability", "Audit Rights",
+    "Exclusivity", "Change Of Control", "Non-Compete",
+]
+CATEGORIES = CLEAR_CATEGORIES + AMBIGUOUS_CATEGORIES
 
 
 def ensure_dirs() -> None:
