@@ -50,3 +50,11 @@ def load_squad(path: Path) -> tuple[pd.DataFrame, dict[str, str]]:
 def load_splits() -> dict[str, list[str]]:
     """Return {'train': [...titles], 'val': [...], 'test': [...]} from the saved split file."""
     return json.loads(config.SPLITS_FILE.read_text())
+
+def load_split_questions(split: str) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Questions for one split ('train' | 'val' | 'test'), only the 12 chosen categories.
+    Built from CUADv1.json (one row per contract x category), as decided in M1."""
+    full, contexts = load_squad(config.DATA_RAW / "CUADv1.json")
+    titles = set(load_splits()[split])
+    mask = full["title"].isin(titles) & full["category"].isin(config.CATEGORIES)
+    return full[mask].reset_index(drop=True), contexts
