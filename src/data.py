@@ -22,7 +22,9 @@ def download():
     for name, url in FILES.items():
         if not (config.RAW / name).exists():
             print("downloading", name)
-            urllib.request.urlretrieve(url, config.RAW / name)
+            part = config.RAW / f"{name}.part"  # renamed only once complete
+            urllib.request.urlretrieve(url, part)
+            part.rename(config.RAW / name)
     with zipfile.ZipFile(config.RAW / "data.zip") as zf:
         zf.extractall(config.RAW)
 

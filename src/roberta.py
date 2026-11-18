@@ -4,6 +4,7 @@ import random
 import shutil
 import urllib.request
 import zipfile
+from collections import Counter
 
 import numpy as np
 import torch
@@ -42,18 +43,23 @@ def answer_tokens(off, start, end):
 
 
 def training_examples(tok, questions, contexts, args):
-    pos, neg = [], []
+    pos, neg, unfit = [], [], Counter()
     for r in tqdm(questions.itertuples(), total=len(questions), desc="windows"):
         spans = [(s, s + len(t)) for s, t in zip(r.answer_starts, r.answer_texts)]
+        fit = set()
         for w in windows(tok, r.question, contexts[r.context_id], args.max_length, args.stride):
-            hits = [t for t in (answer_tokens(w["off"], s, e) for s, e in spans) if t]
-            pos += [(w["ids"], s, e) for s, e in hits]
+            hits = {k: t for k, (a, b) in enumerate(spans) if (t := answer_tokens(w["off"], a, b))}
+            fit |= hits.keys()
+            pos += [(w["ids"], s, e) for s, e in hits.values()]
             if not hits:
                 neg.append((w["ids"], w["cls"], w["cls"]))
+        unfit[r.category] += len(spans) - len(fit)
     rng = random.Random(args.seed)
     examples = pos + rng.sample(neg, min(len(neg), int(args.neg_ratio * len(pos))))
     rng.shuffle(examples)
     print(f"{len(pos)} answer windows, {len(examples) - len(pos)} of {len(neg)} no-answer windows kept")
+    print(f"{unfit.total()} of {questions['answer_texts'].str.len().sum()} answers never fit in one window:",
+          dict(+unfit))
     return examples
 
 
