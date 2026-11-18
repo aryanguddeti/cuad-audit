@@ -1,60 +1,92 @@
-"""Load CUAD's SQuAD-format JSON into a flat table: one row per (contract, category) question."""
+import functools
 import json
+import random
 import re
-from pathlib import Path
+import urllib.request
+import zipfile
 
 import pandas as pd
+
 from src import config
 
-CATEGORY_RE = re.compile(r'related to "(.+?)"')
+REPO = "https://raw.githubusercontent.com/TheAtticusProject/cuad/main"
+FILES = {
+    "data.zip": "https://github.com/TheAtticusProject/cuad/raw/main/data.zip",
+    "evaluate.py": f"{REPO}/evaluate.py",
+    "category_descriptions.csv": f"{REPO}/category_descriptions.csv",
+}
 
 
-def load_squad(path: Path) -> tuple[pd.DataFrame, dict[str, str]]:
-    """Read a CUAD SQuAD-format file.
+def download():
+    config.ensure_dirs()
+    for name, url in FILES.items():
+        if not (config.DATA_RAW / name).exists():
+            print("downloading", name)
+            part = config.DATA_RAW / f"{name}.part"  # renamed only once complete
+            urllib.request.urlretrieve(url, part)
+            part.rename(config.DATA_RAW / name)
+    with zipfile.ZipFile(config.DATA_RAW / "data.zip") as zf:
+        zf.extractall(config.DATA_RAW)
 
-    Returns:
-        questions: DataFrame, one row per question, with columns
-            id, doc_idx, title, context_id, category, question,
-            answer_texts (list[str]), answer_starts (list[int]), is_impossible (bool)
-        contexts: {context_id: contract text}. Text is stored once, never stripped,
-            so answer_start offsets stay valid.
-    """
+
+@functools.cache
+def load_squad(path):
     with open(path, encoding="utf-8") as f:
         raw = json.load(f)
-
     rows, contexts = [], {}
-    for doc_idx, doc in enumerate(raw["data"]):
-        title = doc["title"]
-        for para_idx, para in enumerate(doc["paragraphs"]):
-            # doc_idx (not title) in the key: safe even if a title appears twice
-            context_id = f"{doc_idx}:{para_idx}"
-            contexts[context_id] = para["context"]
+    for i, doc in enumerate(raw["data"]):
+        for j, para in enumerate(doc["paragraphs"]):
+            cid = f"{i}:{j}"
+            contexts[cid] = para["context"]
             for qa in para["qas"]:
-                match = CATEGORY_RE.search(qa["question"])
-                if match is None:
-                    raise ValueError(f"No category found in question id {qa['id']!r}")
-                answers = qa.get("answers", [])
                 rows.append({
                     "id": qa["id"],
-                    "doc_idx": doc_idx,
-                    "title": title,
-                    "context_id": context_id,
-                    "category": match.group(1),
+                    "title": doc["title"],
+                    "context_id": cid,
+                    "category": re.search(r'related to "(.+?)"', qa["question"]).group(1),
                     "question": qa["question"],
-                    "answer_texts": [a["text"] for a in answers],
-                    "answer_starts": [a["answer_start"] for a in answers],
-                    "is_impossible": qa.get("is_impossible", len(answers) == 0),
+                    "answer_texts": [a["text"] for a in qa["answers"]],
+                    "answer_starts": [a["answer_start"] for a in qa["answers"]],
                 })
     return pd.DataFrame(rows), contexts
 
-def load_splits() -> dict[str, list[str]]:
-    """Return {'train': [...titles], 'val': [...], 'test': [...]} from the saved split file."""
+
+def make_splits():
+    if config.SPLITS_FILE.exists():
+        return
+    train = sorted(set(load_squad(config.DATA_RAW / "train_separate_questions.json")[0]["title"]))
+    test = sorted(set(load_squad(config.DATA_RAW / "test.json")[0]["title"]))
+    random.Random(config.SEED).shuffle(train)
+    n_val = round(len(train) * config.VAL_FRACTION)
+    splits = {"train": sorted(train[n_val:]), "val": sorted(train[:n_val]), "test": test}
+    config.SPLITS_FILE.write_text(json.dumps(splits, indent=2))
+
+
+def load_splits():
     return json.loads(config.SPLITS_FILE.read_text())
 
-def load_split_questions(split: str) -> tuple[pd.DataFrame, dict[str, str]]:
-    """Questions for one split ('train' | 'val' | 'test'), only the 12 chosen categories.
-    Built from CUADv1.json (one row per contract x category), as decided in M1."""
+
+def load_split(split, limit=None):
     full, contexts = load_squad(config.DATA_RAW / "CUADv1.json")
-    titles = set(load_splits()[split])
-    mask = full["title"].isin(titles) & full["category"].isin(config.CATEGORIES)
-    return full[mask].reset_index(drop=True), contexts
+    titles = load_splits()[split][:limit]
+    df = full[full["title"].isin(titles) & full["category"].isin(config.CATEGORIES)]
+    return df.reset_index(drop=True), contexts
+
+
+def category_counts():
+    train, _ = load_squad(config.DATA_RAW / "train_separate_questions.json")
+    test, _ = load_squad(config.DATA_RAW / "test.json")
+    contracts = lambda d: d[d["answer_texts"].str.len() > 0].groupby("category")["title"].nunique()
+    spans = lambda d: d["answer_texts"].str.len().groupby(d["category"]).sum()
+    table = pd.DataFrame({"test_pos_contracts": contracts(test), "test_spans": spans(test),
+                          "train_pos_contracts": contracts(train), "train_spans": spans(train)})
+    table = table.fillna(0).astype(int)
+    table["test_pos_rate"] = (table["test_pos_contracts"] / test["title"].nunique()).round(2)
+    table.sort_values("test_pos_contracts", ascending=False).to_csv(config.METRICS / "category_counts.csv")
+
+
+if __name__ == "__main__":
+    download()
+    make_splits()
+    category_counts()
+    print({k: len(v) for k, v in load_splits().items()})
