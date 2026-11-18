@@ -130,7 +130,7 @@ def train(args):
     tok = AutoTokenizer.from_pretrained(args.model)
     model = AutoModelForQuestionAnswering.from_pretrained(args.model).to(DEVICE)
     train_q, train_ctx = load_split("train", args.limit)
-    val_q, val_ctx = load_split("val", args.limit)
+    val_q, val_ctx = load_split("val", args.val_limit or args.limit)
 
     examples = training_examples(tok, train_q, train_ctx, args)
     collate = lambda b: (*pad_batch([x[0] for x in b], tok.pad_token_id),
@@ -206,7 +206,8 @@ if __name__ == "__main__":
     p.add_argument("--batch-size", type=int, default=16)
     p.add_argument("--eval-batch-size", type=int, default=64)
     p.add_argument("--seed", type=int, default=config.SEED)
-    p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--limit", type=int, default=None, help="only the first N contracts of each split (quick test)")
+    p.add_argument("--val-limit", type=int, default=None, help="train only: validate on the first N validation contracts (faster)")
     args = p.parse_args()
     config.ensure_dirs()
     {"train": train, "predict": run_predict, "download-cuad": lambda _: download_cuad()}[args.mode](args)
