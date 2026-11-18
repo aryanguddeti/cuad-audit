@@ -84,3 +84,35 @@ def test_nbest_returns_gold_for_perfect_logits(tok):
             total += 1
             hits += " ".join(r.answer_texts[0].split()) in top
     assert hits / total >= 0.95
+
+
+@needs_data
+def test_roundtrip_on_real_contracts(tok):
+    """chars -> tokens -> chars for every labelled answer that fits in a window (first 6 val contracts).
+
+    Allowed: identical text, or differences that tokens cannot represent (surrounding whitespace,
+    label starting/ending mid-word). Anything else means the offset mapping is broken."""
+    q, ctx = load_split("val", 6)
+    counts = {"exact": 0, "whitespace_only": 0, "partial_word": 0, "mismatch": 0}
+    mismatches = []
+    for r in q.itertuples():
+        ws = windows(tok, r.question, ctx[r.context_id], 512, 128)
+        for start, text in zip(r.answer_starts, r.answer_texts):
+            for w in ws:
+                t = answer_tokens(w["off"], start, start + len(text))
+                if t is None:
+                    continue
+                got = ctx[r.context_id][w["off"][t[0], 0]:w["off"][t[1], 1]]
+                if got == text:
+                    counts["exact"] += 1
+                elif got.strip() == text.strip():
+                    counts["whitespace_only"] += 1
+                elif text.strip() in got:
+                    counts["partial_word"] += 1
+                else:
+                    counts["mismatch"] += 1
+                    mismatches.append((r.id, text[:80], got[:80]))
+                break  # the first window holding the answer is enough
+    assert sum(counts.values()) > 20, "too few answers checked to mean anything"
+    assert counts["mismatch"] == 0, mismatches[:3]
+    assert counts["exact"] > 0
