@@ -16,10 +16,10 @@ _cuad = None
 def cuad():
     global _cuad
     if _cuad is None:
-        spec = importlib.util.spec_from_file_location("cuad_evaluate", config.RAW / "evaluate.py")
+        spec = importlib.util.spec_from_file_location("cuad_evaluate", config.DATA_RAW / "evaluate.py")
         _cuad = importlib.util.module_from_spec(spec)
         cwd = os.getcwd()
-        os.chdir(config.RAW)
+        os.chdir(config.DATA_RAW)
         try:
             spec.loader.exec_module(_cuad)
         finally:

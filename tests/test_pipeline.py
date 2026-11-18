@@ -10,7 +10,7 @@ from src.data import load_split, load_splits
 from src.metrics import THRESHOLDS, counts, cuad, summarize
 from src.roberta import answer_tokens, nbest, windows
 
-needs_data = pytest.mark.skipif(not (config.RAW / "CUADv1.json").exists(), reason="run python -m src.data first")
+needs_data = pytest.mark.skipif(not (config.DATA_RAW / "CUADv1.json").exists(), reason="run python -m src.data first")
 QUESTION = 'Highlight the parts (if any) of this contract related to "Governing Law" that should be reviewed by a lawyer.'
 ANSWER = "This Agreement shall be governed by the laws of the State of New York."
 

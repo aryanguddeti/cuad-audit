@@ -20,13 +20,13 @@ FILES = {
 def download():
     config.ensure_dirs()
     for name, url in FILES.items():
-        if not (config.RAW / name).exists():
+        if not (config.DATA_RAW / name).exists():
             print("downloading", name)
-            part = config.RAW / f"{name}.part"  # renamed only once complete
+            part = config.DATA_RAW / f"{name}.part"  # renamed only once complete
             urllib.request.urlretrieve(url, part)
-            part.rename(config.RAW / name)
-    with zipfile.ZipFile(config.RAW / "data.zip") as zf:
-        zf.extractall(config.RAW)
+            part.rename(config.DATA_RAW / name)
+    with zipfile.ZipFile(config.DATA_RAW / "data.zip") as zf:
+        zf.extractall(config.DATA_RAW)
 
 
 @functools.cache
@@ -54,10 +54,10 @@ def load_squad(path):
 def make_splits():
     if config.SPLITS_FILE.exists():
         return
-    train = sorted(set(load_squad(config.RAW / "train_separate_questions.json")[0]["title"]))
-    test = sorted(set(load_squad(config.RAW / "test.json")[0]["title"]))
+    train = sorted(set(load_squad(config.DATA_RAW / "train_separate_questions.json")[0]["title"]))
+    test = sorted(set(load_squad(config.DATA_RAW / "test.json")[0]["title"]))
     random.Random(config.SEED).shuffle(train)
-    n_val = round(len(train) * 0.1)
+    n_val = round(len(train) * config.VAL_FRACTION)
     splits = {"train": sorted(train[n_val:]), "val": sorted(train[:n_val]), "test": test}
     config.SPLITS_FILE.write_text(json.dumps(splits, indent=2))
 
@@ -67,15 +67,15 @@ def load_splits():
 
 
 def load_split(split, limit=None):
-    full, contexts = load_squad(config.RAW / "CUADv1.json")
+    full, contexts = load_squad(config.DATA_RAW / "CUADv1.json")
     titles = load_splits()[split][:limit]
     df = full[full["title"].isin(titles) & full["category"].isin(config.CATEGORIES)]
     return df.reset_index(drop=True), contexts
 
 
 def category_counts():
-    train, _ = load_squad(config.RAW / "train_separate_questions.json")
-    test, _ = load_squad(config.RAW / "test.json")
+    train, _ = load_squad(config.DATA_RAW / "train_separate_questions.json")
+    test, _ = load_squad(config.DATA_RAW / "test.json")
     contracts = lambda d: d[d["answer_texts"].str.len() > 0].groupby("category")["title"].nunique()
     spans = lambda d: d["answer_texts"].str.len().groupby(d["category"]).sum()
     table = pd.DataFrame({"test_pos_contracts": contracts(test), "test_spans": spans(test),
